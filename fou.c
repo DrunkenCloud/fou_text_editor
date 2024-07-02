@@ -119,6 +119,31 @@ void abFree(struct abuf *ab){
 
 /*** input ***/
 
+void editorMoveCursor(char key) {
+	switch (key) {
+		case 'a':
+			if(E.cx != 0) E.cx--;
+			else if((E.cy != 0) & (E.cx == 0)){
+				E.cx = E.screencols - 1;
+				E.cy--;
+			} 
+			break;
+		case 's':
+			if(E.cy < (E.screenrows - 1)) E.cy++;
+			break;
+		case 'w':
+			if(E.cy != 0) E.cy--;
+			break;
+		case 'd':
+			if(E.cx < (E.screencols - 1)) E.cx++;
+			else if((E.cy < (E.screenrows - 1)) & (E.cx == (E.screencols - 1))){
+				E.cx = 0;
+				E.cy++;
+			}
+			break;
+	}
+}
+
 void editorProcessKeypress() {
 	char c = editorReadKey();
 
@@ -127,6 +152,13 @@ void editorProcessKeypress() {
 			write(STDOUT_FILENO, "\x1b[2J", 4);
      		write(STDOUT_FILENO, "\x1b[H", 3);
 			exit(0);
+			break;
+
+		case 'w':
+		case 'a':
+		case 's':
+		case 'd':
+			editorMoveCursor(c);
 			break;
 	}
 }
