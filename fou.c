@@ -13,6 +13,12 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define FOU_VERSION "0.0.1"
+enum editorKey {
+  ARROW_LEFT = 'a',
+  ARROW_RIGHT = 'd',
+  ARROW_UP = 'w',
+  ARROW_DOWN = 's'
+};
 
 /*** data ***/
 
@@ -61,7 +67,26 @@ char editorReadKey() {
 	while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
 		if (nread == -1 && errno != EAGAIN) die("read");
 	}
-	return c;
+
+	if (c == '\x1b') {
+		char seq[3];
+
+		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+
+		if (seq[0] == '[') {
+			switch (seq[1]) {
+				case 'A': return ARROW_UP;
+				case 'B': return ARROW_DOWN;
+				case 'C': return ARROW_RIGHT;
+				case 'D': return ARROW_LEFT;
+			}
+		}
+
+		return '\x1b';
+	} else {
+		return c;
+	}
 }
 
 int getCursorPosition(int *rows, int *cols){
@@ -121,25 +146,25 @@ void abFree(struct abuf *ab){
 
 void editorMoveCursor(char key) {
 	switch (key) {
-		case 'a':
+		case ARROW_LEFT:
 			if(E.cx != 0) E.cx--;
 			else if((E.cy != 0) & (E.cx == 0)){
 				E.cx = E.screencols - 1;
 				E.cy--;
 			} 
 			break;
-		case 's':
-			if(E.cy < (E.screenrows - 1)) E.cy++;
-			break;
-		case 'w':
-			if(E.cy != 0) E.cy--;
-			break;
-		case 'd':
+		case ARROW_RIGHT:
 			if(E.cx < (E.screencols - 1)) E.cx++;
 			else if((E.cy < (E.screenrows - 1)) & (E.cx == (E.screencols - 1))){
 				E.cx = 0;
 				E.cy++;
 			}
+			break;
+		case ARROW_UP:
+			if(E.cy < (E.screenrows - 1)) E.cy++;
+			break;
+		case ARROW_DOWN:
+			if(E.cy != 0) E.cy--;
 			break;
 	}
 }
@@ -154,11 +179,11 @@ void editorProcessKeypress() {
 			exit(0);
 			break;
 
-		case 'w':
-		case 'a':
-		case 's':
-		case 'd':
-			editorMoveCursor(c);
+		case ARROW_UP:
+	    case ARROW_DOWN:
+	    case ARROW_LEFT:
+	    case ARROW_RIGHT:
+   			editorMoveCursor(c);
 			break;
 	}
 }
