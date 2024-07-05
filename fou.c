@@ -56,6 +56,7 @@ struct editorConfig {
 	int numrows;
 	erow *row;
 	int dirty;
+	int state;
 	char * filename;
 	char statusmsg[80];
 	time_t statusmsg_time;
@@ -146,11 +147,13 @@ int editorReadKey() {
 
 		return '\x1b';
 	} else {
-		switch (c) {
-			case 'w': return ARROW_UP;
-			case 'a': return ARROW_LEFT;
-			case 's': return ARROW_DOWN;
-			case 'd': return ARROW_RIGHT;
+		if (E.state == 0){
+			switch (c) {
+				case 'w': return ARROW_UP;
+				case 'a': return ARROW_LEFT;
+				case 's': return ARROW_DOWN;
+				case 'd': return ARROW_RIGHT;
+			}
 		}
 		return c;
 	}
@@ -178,7 +181,7 @@ int getWindowSize(int *rows, int *cols) {
 	struct winsize ws;
 
 	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-		if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
+		if (write(STDOUT_FILENO, "\x1b[10000000C\x1b[1000000B", 12) != 12) return -1;
 		return getCursorPosition(rows, cols);
 	} else {
 		*cols = ws.ws_col;
@@ -483,7 +486,7 @@ void editorDrawRows(struct abuf *ab) {
 void editorDrawStatusBar(struct abuf *ab) {
 	abAppend(ab, "\x1b[7m", 4);
 	char status[80], rstatus[80];
-	int len = snprintf(status, sizeof(status), "%.20s - %7d lines %.20s", E.filename ? E.filename : "[No Name]", E.numrows, E.dirty ? "(modified)": "");
+	int len = snprintf(status, sizeof(status), "%.20s   %.15s - %7d lines %.20s", E.filename ? E.filename : "[No Name]", E.state == 0 ? "COMMAND MODE" : "UPDATE MODE", E.numrows, E.dirty ? "(modified)": "");
 	int rlen = snprintf(rstatus, sizeof(rstatus), "%d, %d/%d", E.cx + 1, E.cy + 1, E.numrows);
 	if (len > E.screencols) {
 		len = E.screencols;
@@ -627,6 +630,7 @@ void editorProcessKeypress() {
 	int c = editorReadKey();
 
 	switch (c) {
+
 		case '\r':
 			editorInsertNewline();
 			break;
@@ -639,6 +643,8 @@ void editorProcessKeypress() {
 			}
 			write(STDOUT_FILENO, "\x1b[2J", 4);
      		write(STDOUT_FILENO, "\x1b[H", 3);
+     		disableRawMode();
+     		write(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
 			exit(0);
 			break;
 
@@ -688,6 +694,7 @@ void editorProcessKeypress() {
 
 		case CTRL_KEY('l'):
 		case '\x1b':
+			E.state ^= 1;
 			break;
 
 		default:
@@ -710,6 +717,7 @@ void initEditor() {
 	E.coloff = 0;
 	E.row = NULL;
 	E.dirty = 0;
+	E.state = 0;
 	E.filename = NULL;
 	E.statusmsg[0] = '\0';
 	E.statusmsg_time = 0;
