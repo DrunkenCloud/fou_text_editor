@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -205,10 +206,11 @@ void destroyer() {
 	free(pt.content);
 	free(pt.add);
 	free(pt.p);
+	free(E.rows);
+	free(E.filename);
 }
 
 void printPieces() {
-	write(STDOUT_FILENO, pt.content, pt.p[0].length);
 	for (int i = 0; i < pt.size; i++) {
 		printf("\n%d,%d %.7s\n", pt.p[i].start, pt.p[i].length, pt.p[i].target == pt.content ? "Content" : "Add");
 	}
@@ -216,7 +218,6 @@ void printPieces() {
 	for(int i = 0; i < E.numrows; i++) {
 		printf("%d,%d,%d\n", E.numrows, E.rows[i].size, E.rows[i].indentation);
 	}
-	exit(0);
 }
 
 void insertInBetween(int x, char c, int insert_index) {
@@ -230,11 +231,10 @@ void insertInBetween(int x, char c, int insert_index) {
 		pt.p[i] = pt.p[i - 2];
 	}
 
-	pt.add = realloc(pt.add, pt.add_size + 1);
-	pt.add[pt.add_size - 1] = c;
-	pt.add[pt.add_size] = '\0';
+	pt.add = realloc(pt.add, (pt.add_size + 1)*sizeof(char));
+	pt.add[pt.add_size] = c;
 
-	pt.p[insert_index + 1].start = pt.add_size - 1;
+	pt.p[insert_index + 1].start = pt.add_size;
 	pt.p[insert_index + 1].length = 1;
 	pt.p[insert_index + 1].target = pt.add;
 
@@ -258,11 +258,14 @@ void insertAtEnd(char c, int insert_index) {
 		pt.p[i] = pt.p[i - 1];
 	}
 
-	pt.add = realloc(pt.add, pt.add_size + 1);
-	pt.add[pt.add_size - 1] = c;
-	pt.add[pt.add_size] = '\0';
+	pt.add = realloc(pt.add, (pt.add_size + 1) * sizeof(char));
+	if (pt.add == NULL) {
+		perror("Memory Allocation Failed!");
+		exit(0);
+	}
+	pt.add[pt.add_size] = c;
 
-	pt.p[insert_index + 1].start = pt.add_size - 1;
+	pt.p[insert_index + 1].start = pt.add_size;
 	pt.p[insert_index + 1].length = 1;
 	pt.p[insert_index + 1].target = pt.add;
 
@@ -276,7 +279,6 @@ void insertCharacter(char c) {
 		x += (E.rows[i].size + E.rows[i].indentation + 1);
 	}
 	x += E.cx;
-	editorMoveCursor(ARROW_RIGHT);
 	int insert_index = -1;
 	int curr_length = 0;
 	for (int i = 0; i < pt.size; i++) {
@@ -288,11 +290,11 @@ void insertCharacter(char c) {
 			break;
 		} else if (x == curr_length) {
 			if (pt.p[i].target == pt.add && (pt.add_size - 1 == pt.p[i].start + pt.p[i].length)){
-				pt.add = realloc(pt.add, pt.add_size + 1);
-				pt.add[pt.add_size - 1] = c;
-				pt.add[pt.add_size] = '\0';
+				pt.add = realloc(pt.add, (pt.add_size + 1) * sizeof(char));
+				pt.add[pt.add_size] = c;
 				pt.p[i].length += 1;
 				pt.add_size += 1;
+				editorMoveCursor(ARROW_RIGHT);
 				return;
 			}
 			 else {
@@ -303,6 +305,7 @@ void insertCharacter(char c) {
 		}
 	}
 
+	editorMoveCursor(ARROW_RIGHT);
 	if (insert_index == -1) {
 		printf("Out of bounds index %d", x);
 		return;
@@ -405,9 +408,8 @@ void createPieceTable(char* file_name) {
 
 	pt.content[file_size] = '\0';
 
-	pt.add = malloc(1);
-	pt.add[0] = '\0';
-	pt.add_size = 1;
+	pt.add = malloc(0 * sizeof(char));
+	pt.add_size = 0;
 	pt.size = 1;
 	pt.p = malloc(sizeof(struct Piece));
 	pt.p[0].start = 0;
@@ -425,10 +427,12 @@ void initialiseconfig() {
 	int j = 0;
 	int size = 0;
 	int indentation = 0;
-	E.rows = malloc(0);
+	E.rows = malloc(1 * sizeof(erow));
 	for(int i = 0; i < pt.p[0].length; i++) {
 		if (pt.p[0].target[i] == '\n') {
-			E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
+			if (j != 0){
+				E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
+			}
 			E.rows[j].size = size;
 			E.rows[j].indentation = indentation;
 			size = 0;
@@ -455,18 +459,23 @@ void remakeconfig() {
 	int j = 0;
 	int size = 0;
 	int indentation = 0;
-	free(E.rows);
-	E.rows = malloc(0);
+	if (E.rows != NULL){
+		free(E.rows);
+		E.rows = NULL;	
+	}
+	E.rows = malloc(sizeof(erow));
 	for(int k = 0; k < pt.size; k++){
 		for(int i = 0; i < pt.p[k].length; i++) {
 			if (pt.p[k].target[pt.p[k].start + i] == '\n') {
-				E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
+				if (j != 0) {
+					E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
+				}
 				E.rows[j].size = size;
 				E.rows[j].indentation = indentation;
 				size = 0;
 				indentation = 0;
 				j += 1;
-			} else if (pt.p[k].target[i] == '\t') {
+			} else if (pt.p[k].target[pt.p[k].start + i] == '\t') {
 				indentation += 1;
 			} else {
 				size += 1;
@@ -478,8 +487,6 @@ void remakeconfig() {
 		E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
 		E.rows[j].size = size;
 		E.rows[j].indentation = indentation;
-		size = 0;
-		indentation = 0;
 		j += 1;
 	}
 	E.numrows = j;
@@ -494,17 +501,23 @@ struct abuf {
 
 #define ABUF_INIT {NULL, 0}
 
-void abAppend(struct abuf *ab, const char *s, int len){
-	char *new = realloc(ab->b, ab->len + len);
+void abAppend(struct abuf *ab, const char *s, int len) {
+    if (len > 0 && s != NULL) {
+        if (ab->len > INT_MAX - len) return;
 
-	if (new == NULL) return;
-	memcpy(&new[ab->len], s, len);
-	ab->b = new;
-	ab->len += len;
+        char *new_buffer = realloc(ab->b, ab->len + len);
+        
+        if (new_buffer == NULL) return;
+
+        memcpy(&new_buffer[ab->len], s, len);
+        ab->b = new_buffer;
+        ab->len += len;
+    }
 }
 
 void abFree(struct abuf *ab){
 	free(ab->b);
+	ab->len = 0;
 }
 
 /*** input ***/
@@ -639,7 +652,7 @@ void pieceTabletoBuffer(struct abuf *ab) {
 		final_size += E.rows[i].size;
 		final_size += E.rows[i].indentation * (FOU_TAB_STOP);
 	}
-	char* final = malloc(final_size + E.numrows - 2);
+	char* final = malloc(final_size + E.numrows);
 	int pos = 0;
 	for (int i = 0; i < pt.size; i++) {
 		for (int j = 0; j < pt.p[i].length; j++) {
@@ -654,10 +667,8 @@ void pieceTabletoBuffer(struct abuf *ab) {
 			}
 		}
 	}
-	char buff[6];
-	sprintf(buff, "%d %d ", final_size, E.numrows);
-	abAppend(ab, buff, 6);
-	abAppend(ab, final, final_size + E.numrows - 2);
+	abAppend(ab, final, final_size + E.numrows);
+	free(final);
 }
 
 void editorDrawRows(struct abuf *ab) {
@@ -732,9 +743,17 @@ void initEditor() {
 }
 
 void initData(char* file_name) {
-	free(E.filename);
-	E.filename = strdup(file_name);
+	if (E.filename != NULL){
+		free(E.filename);
+		E.filename = NULL;
+	}
+	E.filename = malloc(strlen(file_name) + 1);
+	if (E.filename == NULL) {
+		perror("malloc E.filename");
+		exit(0);
+	}
 
+	strcpy(E.filename, file_name);
 	createPieceTable(file_name);
 	initialiseconfig();
 	E.dirty = 0;

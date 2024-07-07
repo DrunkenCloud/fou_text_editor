@@ -5,7 +5,7 @@
 struct Piece {
 	int start;
 	int length;
-	char* target;
+	char **target;
 };
 
 struct PieceTable {
@@ -23,9 +23,14 @@ void destroyer() {
 }
 
 void printPieces() {
-	printf("%s, %s\n", pt.content, pt.add);
+	for(int i = 0; i < pt.size; i++) {
+		for(int j = 0; j < pt.p[i].length; j++) {
+			printf("%c", (*pt.p[i].target)[pt.p[i].start + j]);
+		}
+	}
+	printf("\n");
 	for (int i = 0; i < pt.size; i++) {
-		printf("%d,%d %.7s\n", pt.p[i].start, pt.p[i].length, pt.p[i].target == pt.content ? "Content" : "Add");
+		printf("%d,%d %.7s\n", pt.p[i].start, pt.p[i].length, *pt.p[i].target == pt.content ? "Content" : "Add");
 	}
 }
 
@@ -39,7 +44,6 @@ void createPieceTable(char* file_name) {
 	fseek(file, 0, SEEK_END);
 	long file_size = ftell(file);
 	rewind(file);
-
 
 	pt.content = malloc(file_size + 1);
 	if (pt.content == NULL){		
@@ -58,14 +62,13 @@ void createPieceTable(char* file_name) {
 	}
 
 	pt.content[file_size] = '\0';
-	pt.add = malloc(1);
-	pt.add[0] = '\0';
-	pt.add_size = 1;
+	pt.add = malloc(0);
+	pt.add_size = 0;
 	pt.size = 1;
 	pt.p = malloc(sizeof(struct Piece));
 	pt.p[0].start = 0;
-	pt.p[0].length = file_size - 1;
-	pt.p[0].target = pt.content;
+	pt.p[0].length = file_size;
+	pt.p[0].target = &pt.content;
 	if (atexit(destroyer) != 0) {
 		perror("Failed to register atexit handler");
 		free(pt.content);
@@ -81,17 +84,21 @@ void insertInBetween(int x, char c, int insert_index) {
 		exit(0);
 	}
 
-	for(int i = pt.size + 1; (i - 2) > insert_index; i--) {
+	for (int i = pt.size + 1; i > insert_index + 1; i--) {
 		pt.p[i] = pt.p[i - 2];
 	}
 
-	pt.add = realloc(pt.add, pt.add_size + 1);
-	pt.add[pt.add_size - 1] = c;
-	pt.add[pt.add_size] = '\0';
+	char *new_add = realloc(pt.add, pt.add_size + sizeof(char));
+	if (new_add == NULL) {
+		perror("Memory Allocation Failed!");
+		exit(0);
+	}
+	new_add[pt.add_size] = c;
+	pt.add = new_add;
 
-	pt.p[insert_index + 1].start = pt.add_size - 1;
+	pt.p[insert_index + 1].start = pt.add_size;
 	pt.p[insert_index + 1].length = 1;
-	pt.p[insert_index + 1].target = pt.add;
+	pt.p[insert_index + 1].target = &pt.add;
 
 	pt.p[insert_index + 2].start = pt.p[insert_index].start + x;
 	pt.p[insert_index + 2].length = pt.p[insert_index].length - x;
@@ -109,17 +116,21 @@ void insertAtEnd(char c, int insert_index) {
 		exit(0);
 	}
 
-	for(int i = pt.size; (i - 1) > insert_index; i--) {
+	for (int i = pt.size; i > insert_index + 1; i--) {
 		pt.p[i] = pt.p[i - 1];
 	}
 
-	pt.add = realloc(pt.add, pt.add_size + 1);
-	pt.add[pt.add_size - 1] = c;
-	pt.add[pt.add_size] = '\0';
+	char *new_add = realloc(pt.add, pt.add_size + sizeof(char));
+	if (new_add == NULL) {
+		perror("Memory Allocation Failed!");
+		exit(0);
+	}
+	new_add[pt.add_size] = c;
+	pt.add = new_add;
 
-	pt.p[insert_index + 1].start = pt.add_size - 1;
+	pt.p[insert_index + 1].start = pt.add_size;
 	pt.p[insert_index + 1].length = 1;
-	pt.p[insert_index + 1].target = pt.add;
+	pt.p[insert_index + 1].target = &pt.add;
 
 	pt.size += 1;
 	pt.add_size += 1;
@@ -136,15 +147,18 @@ void insertCharacter(int x, char c) {
 			insertInBetween(x, c, insert_index);
 			break;
 		} else if (x == curr_length) {
-			if (pt.p[i].target == pt.add && (pt.add_size - 1 == pt.p[i].start + pt.p[i].length)){
-				pt.add = realloc(pt.add, pt.add_size + 1);
-				pt.add[pt.add_size - 1] = c;
-				pt.add[pt.add_size] = '\0';
+			if (*pt.p[i].target == pt.add && (pt.add_size == pt.p[i].start + pt.p[i].length)){
+				char *new_add = realloc(pt.add, pt.add_size + sizeof(char));
+				if (new_add == NULL) {
+					perror("Memory Allocation Failed!");
+					exit(0);
+				}
+				new_add[pt.add_size] = c;
+				pt.add = new_add;
 				pt.p[i].length += 1;
 				pt.add_size += 1;
 				return;
-			}
-			 else {
+			} else {
 			 	insert_index = i;
 			 	insertAtEnd(c, insert_index);
 			 	break;
@@ -230,7 +244,7 @@ void printMenu() {
 	printf("Enter your choice: ");
 }
 
-int main (int argc, char **argv) {
+int main(int argc, char **argv) {
 	if (argc < 2) {
 		perror("No file argument given");
 		exit(0);
