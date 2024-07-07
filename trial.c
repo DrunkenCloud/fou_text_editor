@@ -68,7 +68,7 @@ struct editorConfig E;
 struct Piece {
 	int start;
 	int length;
-	char* target;
+	char **target;
 };
 
 struct PieceTable {
@@ -212,7 +212,7 @@ void destroyer() {
 
 void printPieces() {
 	for (int i = 0; i < pt.size; i++) {
-		printf("\n%d,%d %.7s\n", pt.p[i].start, pt.p[i].length, pt.p[i].target == pt.content ? "Content" : "Add");
+		printf("\n%d,%d %.7s\n", pt.p[i].start, pt.p[i].length, *pt.p[i].target == pt.content ? "Content" : "Add");
 	}
 	printf("\n%d, %d\n", E.cx, E.cy);
 	for(int i = 0; i < E.numrows; i++) {
@@ -227,16 +227,21 @@ void insertInBetween(int x, char c, int insert_index) {
 		exit(0);
 	}
 
-	for(int i = pt.size + 1; (i - 2) > insert_index; i--) {
+	for (int i = pt.size + 1; i > insert_index + 1; i--) {
 		pt.p[i] = pt.p[i - 2];
 	}
 
-	pt.add = realloc(pt.add, (pt.add_size + 1)*sizeof(char));
-	pt.add[pt.add_size] = c;
+	char *new_add = realloc(pt.add, pt.add_size + sizeof(char));
+	if (new_add == NULL) {
+		perror("Memory Allocation Failed!");
+		exit(0);
+	}
+	new_add[pt.add_size] = c;
+	pt.add = new_add;
 
 	pt.p[insert_index + 1].start = pt.add_size;
 	pt.p[insert_index + 1].length = 1;
-	pt.p[insert_index + 1].target = pt.add;
+	pt.p[insert_index + 1].target = &pt.add;
 
 	pt.p[insert_index + 2].start = pt.p[insert_index].start + x;
 	pt.p[insert_index + 2].length = pt.p[insert_index].length - x;
@@ -254,20 +259,21 @@ void insertAtEnd(char c, int insert_index) {
 		exit(0);
 	}
 
-	for(int i = pt.size; (i - 1) > insert_index; i--) {
+	for (int i = pt.size; i > insert_index + 1; i--) {
 		pt.p[i] = pt.p[i - 1];
 	}
 
-	pt.add = realloc(pt.add, (pt.add_size + 1) * sizeof(char));
-	if (pt.add == NULL) {
+	char *new_add = realloc(pt.add, pt.add_size + sizeof(char));
+	if (new_add == NULL) {
 		perror("Memory Allocation Failed!");
 		exit(0);
 	}
-	pt.add[pt.add_size] = c;
+	new_add[pt.add_size] = c;
+	pt.add = new_add;
 
 	pt.p[insert_index + 1].start = pt.add_size;
 	pt.p[insert_index + 1].length = 1;
-	pt.p[insert_index + 1].target = pt.add;
+	pt.p[insert_index + 1].target = &pt.add;
 
 	pt.size += 1;
 	pt.add_size += 1;
@@ -279,6 +285,7 @@ void insertCharacter(char c) {
 		x += (E.rows[i].size + E.rows[i].indentation + 1);
 	}
 	x += E.cx;
+	E.cx += 1;
 	int insert_index = -1;
 	int curr_length = 0;
 	for (int i = 0; i < pt.size; i++) {
@@ -289,30 +296,31 @@ void insertCharacter(char c) {
 			insertInBetween(x, c, insert_index);
 			break;
 		} else if (x == curr_length) {
-			if (pt.p[i].target == pt.add && (pt.add_size - 1 == pt.p[i].start + pt.p[i].length)){
-				pt.add = realloc(pt.add, (pt.add_size + 1) * sizeof(char));
-				pt.add[pt.add_size] = c;
+			if (*pt.p[i].target == pt.add && (pt.add_size == pt.p[i].start + pt.p[i].length)){
+				char *new_add = realloc(pt.add, pt.add_size + sizeof(char));
+				if (new_add == NULL) {
+					perror("Memory Allocation Failed!");
+					exit(0);
+				}
+				new_add[pt.add_size] = c;
+				pt.add = new_add;
 				pt.p[i].length += 1;
 				pt.add_size += 1;
-				editorMoveCursor(ARROW_RIGHT);
 				return;
-			}
-			 else {
+			} else {
 			 	insert_index = i;
 			 	insertAtEnd(c, insert_index);
 			 	break;
 			 }
 		}
 	}
-
-	editorMoveCursor(ARROW_RIGHT);
 	if (insert_index == -1) {
 		printf("Out of bounds index %d", x);
 		return;
 	}
 }
 
-void deleteInBetwen(int x, int insert_index) {
+void deleteInBetween(int x, int insert_index) {
 	pt.p = realloc(pt.p, sizeof(struct Piece) * (pt.size + 1));
 	if (pt.p == NULL) {
 		perror("Memory Allocation Failed!");
@@ -354,7 +362,13 @@ void deleteAtBeginning(int insert_index) {
 	}
 }
 
-void deleteCharacter(int x) {
+void deleteCharacter() {
+	int x = 0;
+	for(int i = 0; i < E.cy; i++) {
+		x += (E.rows[i].size + E.rows[i].indentation + 1);
+	}
+	x += E.cx;
+	E.cx -= 1;
 	int curr_length = 0;
 	for (int i = 0; i < pt.size; i++) {
 		curr_length += pt.p[i].length;
@@ -364,7 +378,7 @@ void deleteCharacter(int x) {
 				deleteAtBeginning(i);
 				break;
 			}
-			deleteInBetwen(x, i);
+			deleteInBetween(x, i);
 			break;
 		} else if (x == (curr_length - 1)) {
 			deleteAtEnd(i);
@@ -389,7 +403,6 @@ void createPieceTable(char* file_name) {
 	long file_size = ftell(file);
 	rewind(file);
 
-
 	pt.content = malloc(file_size + 1);
 	if (pt.content == NULL){		
 		perror("Memory Allocation for PieceTable Failed");
@@ -407,14 +420,13 @@ void createPieceTable(char* file_name) {
 	}
 
 	pt.content[file_size] = '\0';
-
-	pt.add = malloc(0 * sizeof(char));
+	pt.add = malloc(0);
 	pt.add_size = 0;
 	pt.size = 1;
 	pt.p = malloc(sizeof(struct Piece));
 	pt.p[0].start = 0;
 	pt.p[0].length = file_size;
-	pt.p[0].target = pt.content;
+	pt.p[0].target = &pt.content;
 	if (atexit(destroyer) != 0) {
 		perror("Failed to register atexit handler");
 		free(pt.content);
@@ -429,7 +441,7 @@ void initialiseconfig() {
 	int indentation = 0;
 	E.rows = malloc(1 * sizeof(erow));
 	for(int i = 0; i < pt.p[0].length; i++) {
-		if (pt.p[0].target[i] == '\n') {
+		if ((*pt.p[0].target)[i] == '\n') {
 			if (j != 0){
 				E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
 			}
@@ -438,7 +450,7 @@ void initialiseconfig() {
 			size = 0;
 			indentation = 0;
 			j += 1;
-		} else if (pt.p[0].target[i] == '\t') {
+		} else if ((*pt.p[0].target)[i] == '\t') {
 			indentation += 1;
 		} else {
 			size += 1;
@@ -447,10 +459,13 @@ void initialiseconfig() {
 
 	if (size != 0 || indentation != 0) {
 		E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
-		E.rows[j].size = size;
+		E.rows[j].size = size + 1;
 		E.rows[j].indentation = indentation;
-		j += 1;
+	} else {
+		E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
+		E.rows[j].size = 1;
 	}
+	j += 1;
 
 	E.numrows = j;
 }
@@ -466,7 +481,7 @@ void remakeconfig() {
 	E.rows = malloc(sizeof(erow));
 	for(int k = 0; k < pt.size; k++){
 		for(int i = 0; i < pt.p[k].length; i++) {
-			if (pt.p[k].target[pt.p[k].start + i] == '\n') {
+			if ((*pt.p[k].target)[pt.p[k].start + i] == '\n') {
 				if (j != 0) {
 					E.rows = realloc(E.rows, sizeof(erow) * (j + 1));
 				}
@@ -475,7 +490,7 @@ void remakeconfig() {
 				size = 0;
 				indentation = 0;
 				j += 1;
-			} else if (pt.p[k].target[pt.p[k].start + i] == '\t') {
+			} else if ((*pt.p[k].target)[pt.p[k].start + i] == '\t') {
 				indentation += 1;
 			} else {
 				size += 1;
@@ -595,6 +610,16 @@ void editorProcessKeypress() {
 		case CTRL_KEY('s'):
 			break;
 
+		case '\r':
+			insertCharacter('\r');
+			remakeconfig();
+			insertCharacter('\n');
+			remakeconfig();
+			E.cy += 1;
+			E.cx = 0;
+			E.actual_x = 0;
+			break;
+
 		case PAGE_UP:
 		case PAGE_DOWN:
 			{
@@ -621,7 +646,9 @@ void editorProcessKeypress() {
 		case BACKSPACE:
 		case CTRL_KEY('h'):
 		case DEL_KEY:
-				break;
+			deleteCharacter();
+			remakeconfig();
+			break;
 
 		case ARROW_UP:
 	    case ARROW_DOWN:
@@ -652,22 +679,28 @@ void pieceTabletoBuffer(struct abuf *ab) {
 		final_size += E.rows[i].size;
 		final_size += E.rows[i].indentation * (FOU_TAB_STOP);
 	}
-	char* final = malloc(final_size + E.numrows);
+	char* final = malloc(final_size + E.numrows + 3*(E.numrows - 1));
 	int pos = 0;
 	for (int i = 0; i < pt.size; i++) {
 		for (int j = 0; j < pt.p[i].length; j++) {
-			if (pt.p[i].target[pt.p[i].start + j] == '\t') {
+			if ((*pt.p[i].target)[pt.p[i].start + j] == '\t') {
 				for (int k = 0; k < FOU_TAB_STOP; k++) {
 					final[pos] = ' ';
 					pos += 1;
 				}
+			} else if ((*pt.p[i].target)[pt.p[i].start + j] == '\n') {
+				final[pos] = '\n';
+				final[pos + 1] = '\x1b';
+				final[pos + 2] = '[';
+				final[pos + 3] = 'K';
+				pos += 4;
 			} else {
-				final[pos] = pt.p[i].target[pt.p[i].start + j];
+				final[pos] = (*pt.p[i].target)[pt.p[i].start + j];
 				pos += 1;
 			}
 		}
 	}
-	abAppend(ab, final, final_size + E.numrows);
+	abAppend(ab, final, final_size + E.numrows + 3*(E.numrows - 1));
 	free(final);
 }
 
