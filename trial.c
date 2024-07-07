@@ -92,10 +92,21 @@ struct details *undodetails;
 struct Piece **redostack;
 struct details *redodetails;
 
-void undopush() {
-	undostack = realloc(undostack, sizeof(struct Piece*) * (undotop + 2));
-	undodetails = realloc(undodetails, sizeof(struct details) * (undotop + 2));
+void die(const char *s) {
+	perror(s);
+	exit(1);
+}
 
+void undopush() {
+	struct Piece **new_undostack = realloc(undostack, sizeof(struct Piece*) * (undotop + 2));
+	struct details *new_undodetails = realloc(undodetails, sizeof(struct details) * (undotop + 2));
+
+	if ((new_undostack == NULL || new_undodetails == NULL) && undotop != 0) {
+		die("Malloc Error!");
+	}
+
+	undostack = new_undostack;
+	undodetails = new_undodetails;
 	undotop += 1;
 	undodetails[undotop].add_size = pt.add_size;
 	undodetails[undotop].size = pt.size;
@@ -107,6 +118,9 @@ void undopush() {
 	}
 	if (redotop >= 0) {
 		redotop = -1;
+		for (int i = 0; i <= redotop; i++){
+			free(redostack[i]);
+		}
 		free(redostack);
 		free(redodetails);
 		redostack = malloc(0);
@@ -118,9 +132,15 @@ void redo() {
 	if (redotop < 0){
 		return;
 	}
-	undostack = realloc(undostack, sizeof(struct Piece*) * (undotop + 2));
-	undodetails = realloc(undodetails, sizeof(struct details) * (undotop + 2));
+	struct Piece **new_undostack = realloc(undostack, sizeof(struct Piece*) * (undotop + 2));
+	struct details *new_undodetails = realloc(undodetails, sizeof(struct details) * (undotop + 2));
 
+	if ((new_undostack == NULL || new_undodetails == NULL) && undotop != 0) {
+		die("Malloc Error!");
+	}
+
+	undostack = new_undostack;
+	undodetails = new_undodetails;
 	undotop += 1;
 	undodetails[undotop].add_size = pt.add_size;
 	undodetails[undotop].size = pt.size;
@@ -133,15 +153,22 @@ void redo() {
 
 	pt.add_size = redodetails[redotop].add_size;
 	pt.size = redodetails[redotop].size;
-	pt.p = realloc(pt.p, sizeof(struct Piece) * pt.size);
+	free(pt.p);
+	pt.p = malloc(sizeof(struct Piece) * pt.size);
 	for (int i = 0; i < pt.size; i++) {
 		pt.p[i].start = redostack[redotop][i].start;
 		pt.p[i].length = redostack[redotop][i].length;
 		pt.p[i].target = redostack[redotop][i].target;
 	}
 
-	redostack = realloc(redostack, sizeof(struct Piece*) * (redotop));
-	redodetails = realloc(redodetails, sizeof(struct details) * (redotop));
+	free(redostack[redotop]);
+	struct Piece **new_redostack = realloc(redostack, sizeof(struct Piece*) * redotop);
+	struct details *new_redodetails = realloc(redodetails, sizeof(struct details) * redotop);
+	if ((new_redostack == NULL || new_redodetails == NULL) && redotop != 0) {
+		die("Malloc problem");
+	}
+	redostack = new_redostack;
+	redodetails = new_redodetails;
 	redotop -= 1;
 }
 
@@ -149,9 +176,14 @@ void undo() {
 	if (undotop < 0) {
 		return;
 	}
-	redostack = realloc(redostack, sizeof(struct Piece*) * (redotop + 2));
-	redodetails = realloc(redodetails, sizeof(struct details) * (redotop + 2));
+	struct Piece **new_redostack = realloc(redostack, sizeof(struct Piece*) * (redotop + 2));
+	struct details *new_redodetails = realloc(redodetails, sizeof(struct details) * (redotop + 2));
+	if ((new_redostack == NULL || new_redodetails == NULL) && redotop != 0) {
+		die("Malloc problem");
+	}
 
+	redostack = new_redostack;
+	redodetails = new_redodetails;
 	redotop += 1;
 	redodetails[redotop].add_size = pt.add_size;
 	redodetails[redotop].size = pt.size;
@@ -164,26 +196,30 @@ void undo() {
 
 	pt.add_size = undodetails[undotop].add_size;
 	pt.size = undodetails[undotop].size;
-	pt.p = realloc(pt.p, sizeof(struct Piece) * pt.size);
+	free(pt.p);
+	pt.p = malloc(sizeof(struct Piece) * pt.size);
 	for (int i = 0; i < pt.size; i++) {
 		pt.p[i].start = undostack[undotop][i].start;
 		pt.p[i].length = undostack[undotop][i].length;
 		pt.p[i].target = undostack[undotop][i].target;
 	}
 
-	undostack = realloc(undostack, sizeof(struct Piece*) * (undotop));
-	undodetails = realloc(undodetails, sizeof(struct details) * (undotop));
+	free(undostack[undotop]);
+	struct Piece **new_undostack = realloc(undostack, sizeof(struct Piece*) * undotop);
+	struct details *new_undodetails = realloc(undodetails, sizeof(struct details) * undotop);
+
+	if ((new_undostack == NULL || new_undodetails == NULL) && undotop != 0) {
+		die("Malloc Error!");
+	}
+
+	undostack = new_undostack;
+	undodetails = new_undodetails;
 	undotop -= 1;
 }
 
 void editorMoveCursor(int key);
 
 /*** terminal ***/
-
-void die(const char *s) {
-	perror(s);
-	exit(1);
-}
 
 void disableRawMode() {
 	write(STDOUT_FILENO, "\x1b[2J", 4);
@@ -300,11 +336,6 @@ int getWindowSize(int *rows, int *cols) {
 /*** piece table operations***/
 
 void destroyer() {
-	free(pt.content);
-	free(pt.add);
-	free(pt.p);
-	free(E.rows);
-	free(E.filename);
 	for (int i = 0; i <= undotop; i++) {
 		free(undostack[i]);
 	}
@@ -315,6 +346,13 @@ void destroyer() {
 	free(redostack);
 	free(undodetails);
 	free(redodetails);
+	undotop = -1;
+	redotop = -1;
+	free(pt.p);
+	free(pt.content);
+	free(pt.add);
+	free(E.rows);
+	free(E.filename);
 }
 
 void printPieces() {
