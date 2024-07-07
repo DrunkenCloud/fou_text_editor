@@ -79,6 +79,103 @@ struct PieceTable {
 	struct Piece* p;
 } pt;
 
+struct details {
+	size_t add_size;
+	size_t size;
+};
+
+int undotop = -1;
+int redotop = -1;
+
+struct Piece **undostack;
+struct details *undodetails;
+struct Piece **redostack;
+struct details *redodetails;
+
+void undopush() {
+	undostack = realloc(undostack, sizeof(struct Piece*) * (undotop + 2));
+	undodetails = realloc(undodetails, sizeof(struct details) * (undotop + 2));
+
+	undotop += 1;
+	undodetails[undotop].add_size = pt.add_size;
+	undodetails[undotop].size = pt.size;
+	undostack[undotop] = malloc(sizeof(struct Piece) * (pt.size));
+	for(int i = 0; i < pt.size; i++){
+		undostack[undotop][i].start = pt.p[i].start;
+		undostack[undotop][i].length = pt.p[i].length;
+		undostack[undotop][i].target = pt.p[i].target;
+	}
+	if (redotop >= 0) {
+		redotop = -1;
+		free(redostack);
+		free(redodetails);
+		redostack = malloc(0);
+		redodetails = malloc(0);
+	}
+}
+
+void redo() {
+	if (redotop < 0){
+		return;
+	}
+	undostack = realloc(undostack, sizeof(struct Piece*) * (undotop + 2));
+	undodetails = realloc(undodetails, sizeof(struct details) * (undotop + 2));
+
+	undotop += 1;
+	undodetails[undotop].add_size = pt.add_size;
+	undodetails[undotop].size = pt.size;
+	undostack[undotop] = malloc(sizeof(struct Piece) * (pt.size));
+	for(int i = 0; i < pt.size; i++){
+		undostack[undotop][i].start = pt.p[i].start;
+		undostack[undotop][i].length = pt.p[i].length;
+		undostack[undotop][i].target = pt.p[i].target;
+	}
+
+	pt.add_size = redodetails[redotop].add_size;
+	pt.size = redodetails[redotop].size;
+	pt.p = realloc(pt.p, sizeof(struct Piece) * pt.size);
+	for (int i = 0; i < pt.size; i++) {
+		pt.p[i].start = redostack[redotop][i].start;
+		pt.p[i].length = redostack[redotop][i].length;
+		pt.p[i].target = redostack[redotop][i].target;
+	}
+
+	redostack = realloc(redostack, sizeof(struct Piece*) * (redotop));
+	redodetails = realloc(redodetails, sizeof(struct details) * (redotop));
+	redotop -= 1;
+}
+
+void undo() {
+	if (undotop < 0) {
+		return;
+	}
+	redostack = realloc(redostack, sizeof(struct Piece*) * (redotop + 2));
+	redodetails = realloc(redodetails, sizeof(struct details) * (redotop + 2));
+
+	redotop += 1;
+	redodetails[redotop].add_size = pt.add_size;
+	redodetails[redotop].size = pt.size;
+	redostack[redotop] = malloc(sizeof(struct Piece) * (pt.size));
+	for (int i = 0; i < pt.size; i++) {
+		redostack[redotop][i].start = pt.p[i].start;
+		redostack[redotop][i].length = pt.p[i].length;
+		redostack[redotop][i].target = pt.p[i].target;
+	}
+
+	pt.add_size = undodetails[undotop].add_size;
+	pt.size = undodetails[undotop].size;
+	pt.p = realloc(pt.p, sizeof(struct Piece) * pt.size);
+	for (int i = 0; i < pt.size; i++) {
+		pt.p[i].start = undostack[undotop][i].start;
+		pt.p[i].length = undostack[undotop][i].length;
+		pt.p[i].target = undostack[undotop][i].target;
+	}
+
+	undostack = realloc(undostack, sizeof(struct Piece*) * (undotop));
+	undodetails = realloc(undodetails, sizeof(struct details) * (undotop));
+	undotop -= 1;
+}
+
 void editorMoveCursor(int key);
 
 /*** terminal ***/
@@ -208,6 +305,16 @@ void destroyer() {
 	free(pt.p);
 	free(E.rows);
 	free(E.filename);
+	for (int i = 0; i <= undotop; i++) {
+		free(undostack[i]);
+	}
+	for (int i = 0; i <= redotop; i++) {
+		free(redostack[i]);
+	}
+	free(undostack);
+	free(redostack);
+	free(undodetails);
+	free(redodetails);
 }
 
 void printPieces() {
@@ -517,17 +624,17 @@ struct abuf {
 #define ABUF_INIT {NULL, 0}
 
 void abAppend(struct abuf *ab, const char *s, int len) {
-    if (len > 0 && s != NULL) {
-        if (ab->len > INT_MAX - len) return;
+	if (len > 0 && s != NULL) {
+		if (ab->len > INT_MAX - len) return;
 
-        char *new_buffer = realloc(ab->b, ab->len + len);
-        
-        if (new_buffer == NULL) return;
+		char *new_buffer = realloc(ab->b, ab->len + len);
+		
+		if (new_buffer == NULL) return;
 
-        memcpy(&new_buffer[ab->len], s, len);
-        ab->b = new_buffer;
-        ab->len += len;
-    }
+		memcpy(&new_buffer[ab->len], s, len);
+		ab->b = new_buffer;
+		ab->len += len;
+	}
 }
 
 void abFree(struct abuf *ab){
@@ -601,20 +708,27 @@ void editorProcessKeypress() {
 
 		case CTRL_KEY('c'):
 			write(STDOUT_FILENO, "\x1b[2J", 4);
-     		write(STDOUT_FILENO, "\x1b[H", 3);
-     		disableRawMode();
-     		write(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
+	 		write(STDOUT_FILENO, "\x1b[H", 3);
+	 		disableRawMode();
+	 		write(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
 			exit(0);
+			break;
+
+		case CTRL_KEY('y'):
+			redo();
+			break;
+
+		case CTRL_KEY('z'):
+			undo();
 			break;
 
 		case CTRL_KEY('s'):
 			break;
 
 		case '\r':
+			undopush();
 			insertCharacter('\r');
-			remakeconfig();
 			insertCharacter('\n');
-			remakeconfig();
 			E.cy += 1;
 			E.cx = 0;
 			E.actual_x = 0;
@@ -646,14 +760,15 @@ void editorProcessKeypress() {
 		case BACKSPACE:
 		case CTRL_KEY('h'):
 		case DEL_KEY:
+			undopush();
 			deleteCharacter();
 			remakeconfig();
 			break;
 
 		case ARROW_UP:
-	    case ARROW_DOWN:
-	    case ARROW_LEFT:
-	    case ARROW_RIGHT:
+		case ARROW_DOWN:
+		case ARROW_LEFT:
+		case ARROW_RIGHT:
    			editorMoveCursor(c);
 			break;
 
@@ -663,8 +778,8 @@ void editorProcessKeypress() {
 			break;
 
 		default:
+			undopush();
 			insertCharacter(c);
-			remakeconfig();
 			break;
 	}
 
@@ -704,6 +819,10 @@ void pieceTabletoBuffer(struct abuf *ab) {
 	free(final);
 }
 
+void scrollTabletoBuffer(struct abuf *ab) {
+
+}
+
 void editorDrawRows(struct abuf *ab) {
 	int y;
 	for (y = 0; y < E.screenrows; y++) {
@@ -736,6 +855,7 @@ void editorDrawRows(struct abuf *ab) {
 }
 
 void editorRefreshScreen() {
+	remakeconfig();
 	struct abuf ab = ABUF_INIT;
 
 	abAppend(&ab, "\x1b[?25l", 6);
@@ -790,6 +910,10 @@ void initData(char* file_name) {
 	createPieceTable(file_name);
 	initialiseconfig();
 	E.dirty = 0;
+	undostack = (struct Piece**)malloc(0 * sizeof(struct Piece*));
+	undodetails = (struct details*)malloc(0 * sizeof(struct details));
+	redostack = (struct Piece**)malloc(0 * sizeof(struct Piece*));
+	redodetails = (struct details*)malloc(0 * sizeof(struct details));
 }
 
 int main(int argc, char *argv[]) {
