@@ -1,10 +1,12 @@
 # Fou Text Editor
 
-This project is th 2nd project from a series of projects recommended from the article https://austinhenley.com/blog/challengingprojects.html which I got from a primeagen video.
+This project is the 2nd project from a series of projects recommended from the article https://austinhenley.com/blog/challengingprojects.html.
 
 ## How it works?
 
-The base code as seen in fou.c is very much the kilo editor as in this article https://viewsourcecode.org/snaptoken/kilo/ with just a few additional features.
+The base code as seen in fou.c is very much the kilo editor as in this article https://viewsourcecode.org/snaptoken/kilo/ with just a few additional features and changes here and there.
+
+To save a file use CTRL-S and to exit its CTRL-C.
 
 Later using the concepts I learnt from this I made another editor trial.c (as in its name, I have completed it yet, I have features I want to implement but am lazy).
 
